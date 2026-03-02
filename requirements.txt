@@ -1,0 +1,7 @@
+# Runtime dependencies for ComfyUI-CorridorKey
+# ComfyUI usually already ships with a suitable torch build. Keeping it listed
+# here matches common custom-node conventions and lets dependency installers
+# verify it is present without changing the node code.
+torch>=2.0
+numpy>=1.24
+Pillow>=9.5

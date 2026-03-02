@@ -1,0 +1,25 @@
+ComfyUI-CorridorKey License Notice
+
+This custom node is intended to follow the licensing expectations stated by the
+upstream CorridorKey repository by nikopueringer:
+
+https://github.com/nikopueringer/CorridorKey
+
+Summary of the upstream terms as described in the upstream README:
+
+1. The upstream project is not presented as a standard standalone SPDX license
+   file. The README describes the release as effectively a variation of
+   CC BY-NC-SA 4.0.
+2. Repackaging and reselling the tool is not permitted.
+3. Offering paid API inference based on the model is not permitted without a
+   separate agreement from the upstream author.
+4. Released variations or improvements should remain free and open source.
+5. Future forks or releases should keep the "Corridor Key" name.
+
+This file is a convenience summary only. The authoritative reference for these
+terms is the upstream README section titled:
+
+"CorridorKey Licensing and Permissions"
+
+If the upstream author publishes a formal license file or updated terms, those
+terms should be reviewed and this file should be updated accordingly.

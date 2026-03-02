@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-corridorkey"
+version = "0.1.0"
+description = "ComfyUI custom node for CorridorKey-style edge-aware coarse mask refinement."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # Keep runtime deps aligned with requirements.txt for ComfyUI installs.
+    "numpy>=1.24",
+    "Pillow>=9.5",
+    "torch>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+    "mypy>=1.10.0",
+    "pytest>=8.0.0",
+    "ruff>=0.6.0",
+]
+
+[tool.setuptools]
+packages = ["corridor_key"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
