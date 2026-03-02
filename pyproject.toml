@@ -11,8 +11,11 @@ requires-python = ">=3.10"
 dependencies = [
     # Keep runtime deps aligned with requirements.txt for ComfyUI installs.
     "numpy>=1.24",
+    "opencv-python>=4.8",
     "Pillow>=9.5",
     "torch>=2.0",
+    "torchvision>=0.15",
+    "timm>=1.0.24,<2.0",
 ]
 
 [project.optional-dependencies]

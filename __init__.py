@@ -2,7 +2,7 @@
 @author: local
 @title: ComfyUI-CorridorKey
 @nickname: CorridorKey
-@description: ComfyUI node for CorridorKey-style coarse mask refinement.
+@description: ComfyUI node for CorridorKey inference.
 """
 
 from __future__ import annotations

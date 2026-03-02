@@ -3,7 +3,15 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+.hypothesis/
 .venv/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+models/*.pth
 dist/
 build/
+pip-wheel-metadata/
 *.egg-info/

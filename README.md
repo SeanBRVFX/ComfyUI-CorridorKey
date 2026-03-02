@@ -2,63 +2,72 @@
 
 ## 1) Project name + one line summary
 
-`ComfyUI-CorridorKey` is a ComfyUI custom node package that exposes a native `CorridorKey` node for CorridorKey-style coarse-mask refinement inside ComfyUI.
+`ComfyUI-CorridorKey` is a ComfyUI custom node package that exposes a native `CorridorKey` inference node for four-pass CorridorKey processing inside ComfyUI.
 
 ## 2) Problem statement and goals (what it does, what it does NOT do)
 
-`ComfyUI-CorridorKey` adapts the intent of the upstream `CorridorKey` project for ComfyUI users who already build masks inside ComfyUI. Instead of running a separate command-line application and instead of bundling extra mask-generation tools such as `VideoMaMa` or `GVM`, this node accepts:
+`ComfyUI-CorridorKey` adapts the upstream `CorridorKey` inference flow for ComfyUI users who already build coarse alpha hints inside ComfyUI. Instead of running the upstream command-line wizard and instead of bundling extra mask-generation tools such as `VideoMaMa` or `GVM`, the main node accepts:
 
 - an `IMAGE` input
 - a coarse `MASK` input produced by other ComfyUI nodes
 
-It then performs an edge-aware matte refinement pass and returns:
+It then runs an upstream-style 4-channel model pass (RGB plus coarse alpha hint), resizes through the expected `2048x2048` inference resolution, and returns:
 
-- a refined alpha `MASK`
-- a selected preview `IMAGE` based on the requested output mode
-- dedicated `IMAGE` outputs for foreground, processed, and comp previews
+- `fg`: straight foreground color
+- `matte`: processed linear alpha
+- `processed`: linear premultiplied RGB
+- `QC`: sRGB checkerboard composite preview
 
 Goals:
 
 - Keep the integration native to ComfyUI's standard custom-node format.
 - Reuse existing ComfyUI nodes for coarse mask creation.
-- Keep runtime dependencies small and compatible with a typical ComfyUI Python environment.
-- Provide a deterministic, testable baseline refinement pipeline that is safe to run locally.
+- Keep the real CorridorKey inference path available inside a normal ComfyUI graph.
+- Preserve the upstream color math rules for sRGB and linear conversions.
 - Track upstream `CorridorKey` changes safely and surface newer verified commits without blindly overwriting local custom-node code.
 
 Non-goals:
 
-- This project does not reimplement the full upstream research model or ship upstream CorridorKey checkpoints.
+- This project does not ship the CorridorKey model checkpoint.
 - This project does not recreate `VideoMaMa`, `GVM`, or any separate mask-proposal pipeline.
-- This project does not download models, call external services, or require network access at runtime.
-- This project does not write output files to disk; it only returns ComfyUI node outputs.
+- This project does not download models automatically.
+- This project does not require network access for normal inference once dependencies and the checkpoint are installed.
 - This project does not auto-overwrite its own code from the upstream `CorridorKey` repository, because that repository is not the same codebase as this ComfyUI custom node.
 
 ## 3) Features (current + clearly marked planned)
 
 Current features:
 
-- One ComfyUI node: `CorridorKey`
+- One ComfyUI node:
+  - `CorridorKey`
+- Uses vendored upstream-style runtime pieces:
+  - `GreenFormer`
+  - `CNNRefinerModule`
+  - upstream color transfer math
 - Accepts batched `IMAGE` tensors and `MASK` tensors
-- Broadcasts a single mask across an image batch when needed
-- Validates shapes, value ranges, and numeric settings
-- Exposes upstream-inspired controls for:
+- Requires a matching coarse alpha hint for each frame in a batch instead of silently reusing one mask across multiple frames
+- Exposes upstream settings for:
   - `Gamma Space`
   - `Despill Strength`
   - `Auto-Despeckle`
   - `Despeckle Size`
   - `Refiner Strength`
-  - output mode selection (`FG`, `Matte`, `Processed`, `Comp`)
-- Performs deterministic edge-aware mask smoothing, spill suppression, and comp preview generation
-- Returns refined alpha mask plus selected output, foreground, processed, and comp preview images
+- Returns the four practical passes directly:
+  - `fg`
+  - `matte`
+  - `processed`
+  - `QC`
+- Includes a bundled example workflow:
+  - `example_workflows/corridorkey_example_workflow.json`
+  - `example_workflows/PF0044-01_Clip-1_REC709_2K.mp4`
+  - `example_workflows/PF0044-01_Clip-1_REC709_2K_mask.mp4`
 - On module load, performs a best-effort background check for newer upstream commits that have no failing GitHub check-runs
-- Includes pytest coverage for the core processor
 
 Planned features:
 
-- Planned: optional backend that can call a true upstream CorridorKey-compatible runtime if the user provides one
-- Planned: trimap output for downstream compositing workflows
-- Planned: preset profiles tuned for hair, glass, and semi-transparent edges
-- Planned: optional preview compositing against solid-color backgrounds
+- Planned: a loader node that can expose a reusable cached engine object explicitly
+- Planned: optional raw-alpha and raw-fg outputs in addition to the practical four-pass outputs
+- Planned: optional direct support for a dedicated ComfyUI models search path
 
 ## 4) Requirements (Python version, OS, dependencies)
 
@@ -66,7 +75,10 @@ Planned features:
 - OS: Windows, Linux, or macOS where ComfyUI runs
 - Runtime dependencies:
   - `torch` (normally already present in the ComfyUI Python environment)
+  - `torchvision`
+  - `timm`
   - `numpy`
+  - `opencv-python`
   - `Pillow`
 - Development dependencies:
   - `pytest`
@@ -82,16 +94,37 @@ Recommended ComfyUI installation:
 
 1. Clone this repository into `ComfyUI/custom_nodes/`.
 2. Install the runtime dependencies into the same Python environment ComfyUI uses.
-3. Restart ComfyUI.
+3. Download the CorridorKey model checkpoint and place it in `ComfyUI-CorridorKey/models/`.
+4. Restart ComfyUI.
 
 Typical install flow:
 
 ```powershell
 cd ComfyUI\custom_nodes
-git clone <repo-url> ComfyUI-CorridorKey
+git clone https://github.com/SeanBRVFX/ComfyUI-CorridorKey.git
 cd ComfyUI-CorridorKey
 python -m pip install -r requirements.txt
 ```
+
+Before restarting ComfyUI, download the model checkpoint from:
+
+```text
+https://huggingface.co/nikopueringer/CorridorKey_v1.0/resolve/main/CorridorKey_v1.0.pth
+```
+
+Then place that `.pth` file in:
+
+```text
+ComfyUI-CorridorKey/models/
+```
+
+Recommended filename:
+
+```text
+ComfyUI-CorridorKey/models/CorridorKey.pth
+```
+
+The loader will also accept another `.pth` filename in `models/`, so the original `CorridorKey_v1.0.pth` filename works too if it is the only checkpoint in that folder.
 
 After that, restart ComfyUI and the `CorridorKey` node should appear.
 
@@ -99,7 +132,7 @@ If you are using ComfyUI Portable on Windows and want to be explicit about the e
 
 ```powershell
 cd ComfyUI_windows_portable\ComfyUI\custom_nodes
-git clone <repo-url> ComfyUI-CorridorKey
+git clone https://github.com/SeanBRVFX/ComfyUI-CorridorKey.git
 ..\..\python_embeded\python.exe -m pip install -r .\ComfyUI-CorridorKey\requirements.txt
 ```
 
@@ -107,7 +140,8 @@ Manual install also works:
 
 1. Copy the `ComfyUI-CorridorKey` folder into `ComfyUI/custom_nodes/`.
 2. Run `python -m pip install -r requirements.txt` from inside that folder.
-3. Restart ComfyUI.
+3. Add the checkpoint file under `models/`.
+4. Restart ComfyUI.
 
 Development install:
 
@@ -119,9 +153,19 @@ python -m pip install -r requirements.txt
 python -m pip install -e .[dev]
 ```
 
-Restart ComfyUI after installation. The node will appear under the `CorridorKey` category.
-
 For a normal ComfyUI install, `requirements.txt` is the primary runtime dependency file. `pyproject.toml` is kept for editable installs and development tooling.
+
+Repository publishing notes:
+
+- Repository URL: `https://github.com/SeanBRVFX/ComfyUI-CorridorKey`
+
+- This repo is already in the standard shape for both manual `git clone` installs and ComfyUI-Manager `git-clone` installs:
+  - the node files live at the repository root
+  - `requirements.txt` is in the repository root
+  - `README.md` is in the repository root
+  - `__init__.py` is in the repository root
+- There is no special extra metadata file required inside this repository for basic ComfyUI-Manager compatibility.
+- For ComfyUI-Manager discovery, the repository URL typically needs to be added to an external node list maintained by ComfyUI-Manager or another registry source.
 
 ## 6) Configuration (env vars, config files, defaults)
 
@@ -129,34 +173,26 @@ The node does not require config files.
 
 Runtime configuration is passed through node inputs:
 
-- `gamma_space`: `sRGB` or `Linear`, matching the upstream input interpretation concept
-- `feather_radius`: integer blur radius used to soften the coarse mask before refinement
-- `edge_focus`: float multiplier that strengthens image-edge preservation
-- `threshold`: float cutoff used to center the matte transition
-- `preserve_core`: float band that locks obvious foreground/background values
-- `despill_strength`: normalized float from `0.0` to `1.0` that reduces green spill on semi-transparent foreground edges
-- `refiner_strength`: float multiplier that strengthens the edge-aware matte correction pass
-- `auto_despeckle`: enables a small morphology-based cleanup pass
-- `despeckle_size`: integer control for the minimum speckle scale to suppress
-- `output_mode`: selects the primary preview output as `FG`, `Matte`, `Processed`, or `Comp`
+- `gamma_space`: `sRGB` or `Linear`
+- `despill_strength`: normalized float from `0.0` to `1.0`
+- `refiner_strength`: float multiplier for the upstream refiner deltas
+- `auto_despeckle`: enables the upstream-style connected-component cleanup pass
+- `despeckle_size`: minimum island size in pixels for auto-despeckle
 
 Defaults:
 
 - `gamma_space = sRGB`
-- `feather_radius = 4`
-- `edge_focus = 1.5`
-- `threshold = 0.5`
-- `preserve_core = 0.2`
 - `despill_strength = 1.0`
 - `refiner_strength = 1.0`
 - `auto_despeckle = enabled`
 - `despeckle_size = 400`
-- `output_mode = Processed`
 
-Implementation note:
+Implementation notes:
 
-- The upstream app uses model-driven processing. This ComfyUI node mirrors the same user-facing control surface where practical, but the internal math is a deterministic local approximation built around the provided image and coarse mask.
+- This node uses the real upstream-style model path and color math, not the earlier heuristic approximation.
 - The upstream CLI uses a numeric prompt for `Auto-Despeckle Size` with a default of `400` pixels. This node exposes the same value as an integer input rather than forcing a fixed dropdown.
+- The `mask` input is the upstream-style coarse alpha hint: rough, blurry, and usually slightly eroded works better than an expanded mask.
+- For batched images, the mask batch must match the image batch. The node does not auto-repeat one mask across multiple frames.
 
 Environment variables for upstream tracking:
 
@@ -172,43 +208,69 @@ Environment variables for upstream tracking:
 
 The currently reviewed upstream head SHA and its last observed check state are pinned in `corridor_key/upstream_sync.py`.
 
+Environment variables for performance and CUDA behavior:
+
+- `CORRIDORKEY_PREFER_CHANNELS_LAST`
+  - Default: `1`
+  - Enables channels-last memory format for better CUDA throughput when supported
+- `CORRIDORKEY_ENABLE_TF32`
+  - Default: `1`
+  - Allows TF32 on supported NVIDIA GPUs for better throughput with small quality tradeoffs typical for inference
+
 ## 7) Usage (examples, CLI/API examples if relevant)
 
 Recommended ComfyUI flow:
 
 1. Load or generate an image.
-2. Create a coarse mask using existing ComfyUI nodes such as RMBG, SAM, Segment Anything, Florence-based tools, or manual masking nodes.
-3. Feed the `IMAGE` and coarse `MASK` into `CorridorKey`.
-4. Choose `FG`, `Matte`, `Processed`, or `Comp` as the node's selected preview output.
-5. Use the refined `MASK` for compositing, inpainting, EXR assembly, or export.
+2. Create a coarse alpha hint using existing ComfyUI nodes such as RMBG, SAM, Segment Anything, Florence-based tools, or manual masking nodes.
+3. Keep that alpha hint rough rather than over-expanded. Slight erosion, softness, and blur are usually closer to what the upstream model was trained on.
+4. Feed the `IMAGE` and coarse `MASK` into `CorridorKey`.
+5. For batched images, provide one mask per frame. Do not rely on one static mask for a moving sequence.
+6. Send the four pass outputs into downstream preview or save nodes.
+7. Send the four pass outputs into your preferred existing saver or export nodes.
+8. While the node runs, it emits brief progress text in ComfyUI and prints matching status lines in the ComfyUI console so long operations are visible.
 
 Node inputs:
 
 - `image`: `IMAGE`
 - `mask`: `MASK`
 - `gamma_space`: `COMBO`
-- `feather_radius`: `INT`
-- `edge_focus`: `FLOAT`
-- `threshold`: `FLOAT`
-- `preserve_core`: `FLOAT`
 - `despill_strength`: `FLOAT`
 - `refiner_strength`: `FLOAT`
 - `auto_despeckle`: `COMBO`
 - `despeckle_size`: `INT`
-- `output_mode`: `COMBO`
 
 Node outputs:
 
-- `refined_mask`: `MASK`
-- `selected_output`: `IMAGE`
-- `foreground`: `IMAGE`
+- `fg`: `IMAGE`
+- `matte`: `MASK`
 - `processed`: `IMAGE`
-- `comp`: `IMAGE`
+- `QC`: `IMAGE`
 
 Example workflow idea:
 
-- `Load Image` -> `RMBG` (or another segmentation node) -> `CorridorKey` -> `Preview Image`
-- For EXR-oriented workflows, use the returned `foreground` and `refined_mask` separately and combine or export them with other ComfyUI nodes such as `cocotools_io`, instead of expecting this node to write EXR files directly.
+- `Load Image` -> `RMBG` (or another segmentation node) -> `CorridorKey` -> your existing save/export nodes
+- Branch the outputs into standard preview nodes and whichever saver nodes you already use for EXR, PNG, or compositing workflows.
+- A bundled video example is included at `example_workflows/corridorkey_example_workflow.json`. It uses core `LoadVideo`, `GetVideoComponents`, `ImageToMask`, `CreateVideo`, and `SaveVideo` nodes plus `CorridorKey`.
+- That bundled workflow is only a simple video-based test to confirm the node runs end-to-end inside ComfyUI.
+- For best quality and behavior closer to the original CorridorKey workflow, prefer EXR image-sequence input and EXR image-sequence output instead of compressed video files.
+- For EXR-focused ComfyUI workflows, `ComfyUI-CoCoTools_IO` is a recommended companion node pack:
+  - `https://github.com/Conor-Collins/ComfyUI-CoCoTools_IO`
+- The bundled example references these included sample files by filename:
+  - `PF0028-05_Clip-5_REC709_2K_input.mp4`
+  - `PF0028-05_Clip-5_REC709_2K_mask.mp4`
+- The bundled sample footage is sourced from ActionVFX practice footage:
+  - `https://www.actionvfx.com/practice-footage/mechanic-in-electrical-explosion/15806`
+  - Scene: `PF0028`
+  - Title: `Mechanic in Electrical Explosion`
+  - ActionVFX describes this footage as covered by its license agreement for commercial use, learning, teaching, demo reels, and similar use cases. Review the ActionVFX license terms directly if you plan to redistribute or publish derivative examples.
+- The bundled mask example is intentionally simple: it was made in DaVinci Resolve as a basic rough mask with a very slight outward expand/erode adjustment plus blur, to keep it in coarse alpha-hint territory rather than final roto.
+- An observed end-to-end runtime for the bundled video test was `484` seconds on this reported machine:
+  - `128 GB` RAM
+  - `RTX 4070 Ti Super`
+  - `16 GB` VRAM
+  - This is only a real-world reference point for the bundled sample, not a formal benchmark. Actual runtime will vary with driver state, other loaded ComfyUI models, codec behavior, and source resolution or duration.
+- If your local `LoadVideo` node does not automatically resolve files from `example_workflows`, use the same filenames and reselect the bundled files once in the node UI.
 
 There is no standalone CLI in this custom node package by design.
 
@@ -231,62 +293,65 @@ IMAGE + coarse MASK
   input validation
         |
         v
- mask normalization
+ batch normalization
         |
         v
- optional gamma handling
+ resize to 2048x2048
         |
         v
- image luminance + edge map
+ 4-channel model inference
         |
         v
- refiner + despeckle
+ upstream refiner delta scaling
         |
         v
-   refined alpha MASK
+ linear alpha + straight FG
         |
         v
- despill + output assembly
-   |       |        |
-   v       v        v
-  FG   Processed   Comp
+ auto-despeckle + despill
+        |
+        v
+ output assembly
+  |     |       |      |
+  v     v       v      v
+ FG   Matte  Processed  QC
 ```
 
 ### Key modules and responsibilities
 
 - `nodes.py`
-  - ComfyUI-facing node class
-  - Defines `INPUT_TYPES`, return types, and node metadata
-  - Converts node inputs into the internal processor call
+  - ComfyUI-facing `CorridorKey` node
 - `corridor_key/config.py`
   - Dataclass for validated runtime settings
+- `corridor_key/color_utils.py`
+  - Vendored upstream sRGB/linear conversions, despill, composite, and matte cleanup helpers
+- `corridor_key/model_transformer.py`
+  - Vendored upstream `GreenFormer` and `CNNRefinerModule`
+- `corridor_key/engine.py`
+  - Vendored and adapted upstream inference engine with 2048 resize handling
 - `corridor_key/tensor_ops.py`
-  - Shared tensor validation, mask normalization, color helpers, and small image-processing helpers
+  - Tensor validation and tensor/NumPy batch conversion helpers
 - `corridor_key/processor.py`
-  - Pure processing pipeline for edge-aware matte refinement, despill, despeckle, and output assembly
+  - Batch bridge between ComfyUI tensors and the upstream-style engine
 - `corridor_key/upstream_sync.py`
   - Best-effort GitHub API integration for verified-upstream commit checks
 - `tests/test_processor.py`
-  - Unit tests for shape handling, validation, and output behavior
+  - Unit tests for configuration, color math, and sync policy helpers
 
 ### Data flow / request flow
 
 1. ComfyUI invokes `CorridorKey.run`.
 2. The node builds a `CorridorKeySettings` object from numeric inputs.
-3. The processor validates the image and mask tensors.
-4. A normalized mask batch is created and aligned to the image batch.
-5. The processor optionally adapts handling for `Gamma Space`.
-6. The processor derives luminance, computes an edge map, and applies the refiner pass.
-7. Optional despeckle cleanup is applied when enabled.
-8. The processor builds foreground, processed, and comp previews, including optional despill.
-9. The processor returns:
-   - refined mask
-   - selected output
-   - foreground
-   - processed
-   - comp
-10. ComfyUI receives the outputs without any file-system side effects.
-11. In parallel, an optional background task may query GitHub and log if a newer verified upstream commit is available.
+3. The processor validates the image and mask tensors and aligns the batch.
+4. The engine resizes each frame to the fixed `2048x2048` inference size, converts gamma as needed, and runs the 4-channel model.
+5. The engine applies upstream-style auto-despeckle, despill, linear premultiplication, and checkerboard compositing.
+6. The processor returns:
+   - `fg`
+   - `matte`
+   - `processed`
+   - `QC`
+7. The four outputs are then available to downstream preview, save, or export nodes already present in your ComfyUI setup.
+8. In parallel, an optional background task may query GitHub and log if a newer verified upstream commit is available.
 
 ## 9) Repository structure (tree)
 
@@ -298,9 +363,18 @@ ComfyUI-CorridorKey/
 |-- pyproject.toml
 |-- __init__.py
 |-- nodes.py
+|-- example_workflows/
+|   `-- corridorkey_example_workflow.json
+|   |-- PF0044-01_Clip-1_REC709_2K.mp4
+|   `-- PF0044-01_Clip-1_REC709_2K_mask.mp4
+|-- models/
+|   `-- CorridorKey.pth  (user-supplied, not committed)
 |-- corridor_key/
 |   |-- __init__.py
 |   |-- config.py
+|   |-- color_utils.py
+|   |-- engine.py
+|   |-- model_transformer.py
 |   |-- tensor_ops.py
 |   |-- processor.py
 |   `-- upstream_sync.py
@@ -329,15 +403,14 @@ When changing behavior:
 
 ### testing strategy (pytest)
 
-- Test pure processing code in `corridor_key/processor.py`
-- Avoid ComfyUI runtime dependencies in the test suite where possible
+- Test configuration and utility code without requiring the checkpoint where possible
+- Avoid relying on a full model load in unit tests unless an explicit integration test is added later
 - Cover:
-  - mask broadcasting
   - parameter validation
-  - output shapes
-  - value range clamping
-  - output mode selection
-  - despeckle and despill edge cases
+  - color transfer function behavior
+  - batch shape handling
+  - four-pass output shapes
+  - despill and auto-despeckle edge cases
   - verified-upstream selection policy for mocked GitHub metadata
 
 ### lint/format rules (ruff + black or ruff format)
@@ -357,10 +430,12 @@ When changing behavior:
 
 - Internal validation raises `ValueError` with specific, user-readable messages
 - The ComfyUI node catches nothing silently; invalid inputs should fail clearly
-- Logging is intentionally minimal:
-  - a module-level logger may emit debug-level messages in the processor
+- Runtime status output is intentionally concise:
+  - model-loading errors are raised with explicit setup guidance
+  - the node emits short progress text while loading the model and processing frames
+  - the same progress is printed to the ComfyUI console for visibility during long runs
+  - a module-level logger may still emit debug-level messages in the processor
   - a background upstream checker may emit info-level status lines
-  - no print-based progress logging
   - GitHub API checks use explicit short timeouts and fail closed
 
 ## 12) Security notes (inputs, secrets, safe defaults)
@@ -370,7 +445,7 @@ When changing behavior:
 - No model downloads or arbitrary network access during image processing
 - No secrets are required
 - All user-provided numeric inputs are validated and clamped to safe ranges
-- File paths are not accepted as node inputs, so the node does not read or write arbitrary files
+- Inference reads only the user-supplied checkpoint under the project directory
 - The processor only operates on in-memory tensors returned by ComfyUI
 - The optional upstream checker uses only GitHub's API with a short timeout, does not require tokens, and never executes remote code
 
@@ -380,7 +455,8 @@ Deployment is simply installation as a ComfyUI custom node:
 
 1. Place this folder under `ComfyUI/custom_nodes/`.
 2. Install the package into the same Python environment used by ComfyUI.
-3. Restart ComfyUI.
+3. Add the checkpoint file under `models/`.
+4. Restart ComfyUI.
 
 There is no separate server, container, or packaged service in this repository.
 
@@ -388,39 +464,52 @@ There is no separate server, container, or packaged service in this repository.
 
 Q: Why does this node require a mask input?
 
-A: This package intentionally reuses existing ComfyUI segmentation and masking nodes instead of duplicating them.
+A: The input is the upstream-style coarse alpha hint. This package intentionally reuses existing ComfyUI segmentation and masking nodes instead of duplicating them.
 
-Q: Why does it not match the full upstream CorridorKey model exactly?
+Q: Can I use one mask for a whole image batch or video batch?
 
-A: This implementation provides a native, deterministic refinement pass inspired by the same workflow goal, without bundling upstream research weights or optional external pipelines.
+A: No. For batched inputs, provide a matching mask for each frame. CorridorKey expects the coarse alpha hint to describe the current frame, even if that hint is rough and slightly eroded.
 
-Q: My mask looks too soft.
+Q: The node says the checkpoint is missing.
 
-A: Lower `feather_radius`, lower `preserve_core`, raise `edge_focus`, or raise `refiner_strength`.
+A: Place the `CorridorKey.pth` model file in `ComfyUI-CorridorKey/models/` and restart ComfyUI.
 
-Q: My mask looks too harsh.
+Checkpoint download URL:
 
-A: Raise `feather_radius` slightly or lower `threshold`.
+`https://huggingface.co/nikopueringer/CorridorKey_v1.0/resolve/main/CorridorKey_v1.0.pth`
 
 Q: Why is `Processed` not writing an EXR with alpha by itself?
 
-A: ComfyUI nodes exchange in-memory tensors. This node returns separate `foreground` and `refined_mask` outputs so you can assemble or export EXR data elsewhere in the workflow.
+A: `Processed` is returned as premultiplied RGB. Use your existing ComfyUI saver/export nodes to pack or write it the way you want, including workflows that combine `processed` with `matte` downstream.
+
+Q: Why does the bundled example workflow use video if EXR is better?
+
+A: The bundled workflow is only a simple native-node test. For production work and behavior closer to the original CorridorKey workflow, use EXR image sequences for input and output. If you want EXR-focused ComfyUI IO, `ComfyUI-CoCoTools_IO` is a strong companion option: `https://github.com/Conor-Collins/ComfyUI-CoCoTools_IO`
 
 Q: Why is the default `despeckle_size` so large?
 
 A: The upstream `CorridorKey` CLI defaults `Auto-Despeckle Size` to `400` pixels. On small images, you may need to lower that value or disable auto-despeckle.
 
+Q: Why does strong despill sometimes look purple?
+
+A: Higher despill values remove excess green and rebalance color into red and blue, which can push heavy spill areas toward magenta or purple. If that happens, lower `despill_strength` and do the remaining color cleanup later in comp if needed.
+
 Q: Does this node auto-update itself from GitHub?
 
 A: It automatically checks for newer upstream commits that appear verified, but it does not self-modify local code. The upstream repo is a different project, so updates should still be reviewed and ported intentionally.
 
+Q: Can this work on 16GB consumer GPUs?
+
+A: That is a design goal, but the inference path stays fixed at `2048x2048` because that is what the model is trained for. Practical support on 16GB-class GPUs should come from memory and throughput optimization at the fixed size, not from silently changing the inference resolution.
+
 ## 15) Roadmap
 
-- Add an optional pluggable backend for a true upstream-compatible inference engine
-- Add trimap and confidence outputs
-- Add more regression tests around semi-transparent regions
-- Add a true RGBA or EXR-friendly packed output path if the surrounding ComfyUI ecosystem provides a stable tensor contract for it
-- Add an example ComfyUI workflow JSON once the node behavior stabilizes
+- Prioritize runtime performance first: reduce per-frame overhead, minimize transfers, and keep throughput strong on production-sized sequences
+- Improve practical support for consumer GPUs, especially 16GB-class cards, while keeping the fixed `2048x2048` inference path intact
+- Add a loader node that can expose a reusable cached engine object explicitly
+- Add optional raw-alpha and raw-fg outputs in addition to the practical four-pass outputs
+- Add optional direct support for a dedicated ComfyUI models search path
+- Expand the bundled example workflows and keep their real-world benchmark notes current as the node evolves
 
 ## 16) Contributing (branching, commit style, PR checklist)
 
@@ -432,7 +521,7 @@ Branching:
 Commit style:
 
 - Prefer imperative commit messages
-- Example: `Add edge-aware CorridorKey refinement node`
+- Example: `Port upstream CorridorKey runtime into ComfyUI`
 
 PR checklist:
 
@@ -443,6 +532,19 @@ PR checklist:
 - Run `mypy corridor_key`
 - Confirm the node loads in ComfyUI
 - Keep the public node contract backward compatible unless documented
+- Performance and cleanup contributions are explicitly welcome. This wrapper was prototyped quickly, and contributors with deeper ComfyUI, PyTorch, or optimization experience can improve it further.
+
+Release checklist:
+
+- Confirm `.gitignore` excludes caches and local editor files before the first commit
+- Ensure `requirements.txt` matches runtime imports
+- Ensure `pyproject.toml` version is correct for the release
+- Ensure `README.md` installation instructions match the actual repo URL and current node name
+- Make sure `__pycache__` folders are not staged
+- Create a clean commit on `main`
+- Tag the release, for example `v0.1.0`
+- Push both `main` and the tag to GitHub
+- Verify a fresh `git clone` into `ComfyUI/custom_nodes` works with `python -m pip install -r requirements.txt`
 
 ## 17) License placeholder
 
